@@ -1,0 +1,62 @@
+name: Build iPhone Air TrueDepth Mocap IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-unsigned-ipa:
+    name: Build Unsigned IPA on Cloud macOS (Xcode 16)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install XcodeGen & Generate Xcode Project
+        working-directory: ios_app
+        run: |
+          if ! command -v xcodegen &> /dev/null; then
+            brew install xcodegen
+          fi
+          xcodegen generate
+
+      - name: Build AirDepthMocap (Release - iphoneos ARM64)
+        working-directory: ios_app
+        run: |
+          xcodebuild clean build \
+            -project AirDepthMocap.xcodeproj \
+            -scheme AirDepthMocap \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            ARCHS="arm64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package Unsigned .ipa for Sideloadly / 爱思助手
+        working-directory: ios_app
+        run: |
+          mkdir -p Payload
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "AirDepthMocap.app" -type d | head -n 1)
+          echo "Found built app at: $APP_PATH"
+          cp -r "$APP_PATH" Payload/AirDepthMocap.app
+          zip -qry AirDepthMocap_iPhoneAir_Unsigned.ipa Payload
+          ls -lh AirDepthMocap_iPhoneAir_Unsigned.ipa
+
+      - name: Upload .ipa Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AirDepthMocap_iPhoneAir_IPA
+          path: ios_app/AirDepthMocap_iPhoneAir_Unsigned.ipa
+          retention-days: 30
